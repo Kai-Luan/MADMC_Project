@@ -90,47 +90,6 @@ def init(m, n, p, v, w, W):
 		res.append([xStart, vStart])
 	return res
 
-
-
-
-# GENERALISATION 
-
-# generalized version, it takes a vector allv and a vector q
-def rapport_gen(allv, poids, q):
-	# ([v1, ..., vn] * [q1, ..., qn])/poids
-	return np.sum((q*allv))/poids
-
-# Initialisation de n solutions
-# m : solutions aléatoires, w : vecteur poids, W : taille du sac, v : vecteur valeurs, n : nombre d'objets, p : nombre d'objectifs.
-def init_gen(m,w,W,v,n,p):
-	res = []
-	for _ in range(m):
-		#q = np.random.random()
-		# generalized q (instead of bi-distrib)
-		q = np.random.dirichlet(np.ones(6),size=1)[0]
-		xStart=np.zeros(200,dtype=int) # n solutions
-		# on range dans l'ordre decroissant
-		#arr = [rapport(v[j][0], v[j][1], w[j], q) for j in range(n)]
-		arr = [rapport(v[j], w[j], q) for j in range(n)]
-		arr = np.argsort(arr)[::-1]
-
-		# total mass of the bag
-		wTotal=0
-
-		# initial objective values
-		vStart=np.zeros(p,dtype=int) # objectifs
-
-		# we loop on all the items
-		for i in range(n):
-			# On prend les objets selon le rapport jusqu'à ce qu'il n'y a plus de place
-			if wTotal+w[arr[i]]<=W:
-				xStart[arr[i]]=1
-				wTotal=wTotal+w[arr[i]]
-				for j in range(p):
-					vStart[j]=vStart[j]+v[arr[i],j]
-		res.append([xStart, vStart])
-	return res
-
 # Fonction de voisinage
 def voisinage(x,n, v, w, W):
 	res = []
@@ -147,43 +106,146 @@ def voisinage(x,n, v, w, W):
 			res.append([copyx, copyv])
 	return res
 
-class NDTree():
-	def __init__(self, pi, pn, points, nmax):
-		self.pi = pi
-		self.pn = pn
-		self.points = points
-		self.succ = []
-		self.count = len(points)
-		self.nmax = nmax
+# ======================== ND-Tree ================================
+class Node():
+	def __init__(self, y, pere=None):
+		self.pi = y
+		self.pn = y
+		self.points = [y]
+		self.pere = pere
 
-
-# Maximization
-def updateNode(node, y, pere):
-	if node.pn >= y: return False
-	elif y >= node.pi: 
-		# Remove node and sub_tree of n
-		return True
-	elif node.pi >= y or y >= node.pn:
-		for x in node.succ:
-			if not updateNode(x, y): 
-				return False
-			else:
-				if x.isEmpty():
-					node.remove(x)
-		if len(node.succ) == 1:
-			pere.remove(node)
-			pere.append(node.succ)
-	else: # skip this node
-		pass
-	return True
-
-def updateIdealNadir(node, y):
-	pass
-
-def insert(node, y):
-	if node.isLeaf():
-		node.points.append(y)
-		updateIdealNadir(node, y)
+	def isLeaf(self):
+		return not isinstance(self.points[0], Node)
 	
+	def isEmpty(self):
+		return len(self.points) == 0
+	
+	def closest(self, y):
+		y = np.array(y)
+		P = [(x.pi+x.pn)/2 for x in self.points]
+		P = np.array(P)
+		D = np.linalg.norm(P-y, axis=1)
+		index = np.argmin(D)
+		return self.points[index]
+	
+	def remove(self, z):
+		for i,p in enumerate(self.points):
+			if np.all(z==p):
+				self.points.pop(i)
+				break
+	
+	def updateIdealNadir(self, y):
+		b = 0
+		points = []
+		if self.isLeaf(): points = self.points
+		else:
+			for x in self.points:
+				points.append(x.pi)
+				points.append(x.pn)
+		a = np.max(points, 0)
+		b = np.min(points, 0)
+		if np.any(b < self.pn) or np.any(a > self.pi):
+			self.pi = a
+			self.pn = b
+			if self.pere is not None: self.pere.updateIdealNadir(y)
+
+	def updateNode(self, tree, y):
+		"""
+		return False if y is dominated, else True
+		"""
+		if np.all(self.pn >= y): return False
+		elif np.all(y >= self.pi): 
+			# Remove self and sub_tree of n
+			if self.pere is not None: self.pere.remove(self)
+			return True
+		elif np.all(self.pi >= y) or np.all(y >= self.pn):
+			if self.isLeaf(): 
+				# on supprime les solutions dominées
+				# sinon, le candidat y s'il est dominé
+				L = []
+				for z in self.points:
+					if np.all(z >= y): return False
+					elif not np.all(y > z): L.append(z)
+				self.points = L
+			else: 
+				for x in self.points:
+					if not x.updateNode(tree, y): return False
+					elif x.isEmpty(): self.remove(x)
+				# supprime les noeuds à un successeur
+				if len(self.points) == 1:
+					node = self.points[0]
+					if self.pere is not None:
+						self.pere.remove(self)
+						self.pere.append(node)
+					else: tree.root = node
+		return True
+
+	def split(self, nChild=2):
+		points = np.array(self.points)
+		D = [
+			np.linalg.norm(points - p, axis=1).mean()
+			for p in points
+		]
+		I = np.argsort(D)[-nChild:]
+		I.sort()
+		
+		N, Z = [], []
+		for i in I[::-1]:
+			z = self.points.pop(i)
+			N.append(Node(z, pere=self))
+			Z.append(z)
+		Z = np.array(Z)
+		P = self.points
+		self.points = N
+		while P:
+			z = P.pop()
+			tmp = self.closest(z)
+			tmp.points.append(z)
+			tmp.updateIdealNadir(z)
+	
+	def insert(self, y, NBMAX, nChild):
+		if self.isLeaf():
+			self.points.append(y)
+			self.updateIdealNadir(y)
+			if len(self.points) > NBMAX:
+				self.split(nChild)
+		else:
+			self.closest(y).insert(y, NBMAX,nChild)
+
+class NDTree():
+	def __init__(self, NBMAX=20):
+		self.root = None
+		self.NBMAX = NBMAX
+
+	# return (YND, Squares)
+	# YND non dominated solutions
+	# Squares: (depth, ideal point, nadir point) of each node
+	def getPoints(self, leafOnly = True):
+		def get(node,count=0):
+			if node.isLeaf():
+				return node.points, [(count,node.pi, node.pn)]
+			else:
+				L = []
+				M = [] if leafOnly else [(count,node.pi, node.pn)]
+				for x in node.points: 
+					ynd, yid = get(x, count+1)
+					L.extend(ynd)
+					M.extend(yid)
+				return L, M
+		return get(self.root)
+	
+	def update(self,y):
+		dim = len(y)
+		if self.root is None:
+			self.root = Node(y)
+			return True
+		elif self.root.updateNode(self, y):
+			self.root.insert(y, self.NBMAX, nChild=dim)
+			return True
+		return False
+	
+	
+
+		
 
 		
