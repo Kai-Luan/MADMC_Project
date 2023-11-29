@@ -92,6 +92,44 @@ def init(m, n, p, v, w, W):
 		res.append([xStart, vStart])
 	return res
 
+# Initialisation generalisee
+
+# generalized version, it takes a vector allv and a vector q
+def rapport_gen(allv, poids, q):
+	# ([v1, ..., vn] * [q1, ..., qn])/poids
+	return np.sum((q*allv))/poids
+
+# Initialisation de n solutions
+# m : solutions aléatoires, w : vecteur poids, W : taille du sac, v : vecteur valeurs, n : nombre d'objets, p : nombre d'objectifs.
+def init_gen(m,w,W,v,n,p):
+	res = []
+	for _ in range(m):
+		#q = np.random.random()
+		# generalized q (instead of bi-distrib)
+		q = np.random.dirichlet(np.ones(6),size=1)[0]
+		xStart=np.zeros(200,dtype=int) # n solutions
+		# on range dans l'ordre decroissant
+		#arr = [rapport(v[j][0], v[j][1], w[j], q) for j in range(n)]
+		arr = [rapport(v[j], w[j], q) for j in range(n)]
+		arr = np.argsort(arr)[::-1]
+
+		# total mass of the bag
+		wTotal=0
+
+		# initial objective values
+		vStart=np.zeros(p,dtype=int) # objectifs
+
+		# we loop on all the items
+		for i in range(n):
+			# On prend les objets selon le rapport jusqu'à ce qu'il n'y a plus de place
+			if wTotal+w[arr[i]]<=W:
+				xStart[arr[i]]=1
+				wTotal=wTotal+w[arr[i]]
+				for j in range(p):
+					vStart[j]=vStart[j]+v[arr[i],j]
+		res.append([xStart, vStart])
+	return res
+
 # Fonction de voisinage
 def voisinage(x,n, v, w, W):
 	res = []
@@ -308,6 +346,5 @@ class Aggreg():
 
 	
 
-		
 
 		
