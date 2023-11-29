@@ -1,6 +1,8 @@
 import numpy as np
 from read_file import *
 from indicators import *
+from gurobipy import GRB
+import gurobipy as gp
 
 def miseAJour(X, x):
 	if X:
@@ -243,7 +245,67 @@ class NDTree():
 			self.root.insert(y, self.NBMAX, nChild=dim)
 			return True
 		return False
+
+# MR: max regret: x in O
+# PMR: pairwise max regret, (x,y) in O
+# MMR: minimax regret: x
+
+# CSS:
+# x: minimax regret
+# y: argmax PMR(x,y)
+
+class Model():
+	def __init__(self, dim):
+		self.model = None
+		self.dim = dim
+
+	# OWA aggregator model
+	def init_owa_model(self):
+		self.model = gp.Model('ModelEU')
+		m = self.model
+		w = m.addVars(*range(self.dim))
+		self.w = np.array(w)
+		for i in range(self.dim-1):
+			m.addConstr(w[i]-w[i+1]>=0, f'c{i+1}')
+		m.addConstr(sum(w) ==1)
+
+	def update_owa(self, a,b):
+		a, b = np.asarray(a.sorted()), np.asarray(b.sorted())
+		self.model.addConstr(sum((a-b)*self.w) >= 0)
+
+	# Optimize with the OWA function
+	def optimize(self, a, b=None):
+		if b is None: b = np.zeros(self.dim)
+		a, b = np.asarray(a), np.asarray(b)
+		a.sort()
+		b.sort()
+		self.model.setObjective(sum(self.w*(a-b)), GRB.MAXIMIZE)
+		self.model.update()
+		self.model.optimize()
+		return self.model.ObjVal()
 	
+	def CSS(self, X):
+		MR = [self.optimize(x) for x in X]
+		i = np.argmin(MR)
+		PMR = [self.optimize(y, X[i]) for y in X]
+		j = np.argmax(PMR)
+		return (X[i],X[j])
+
+class Aggreg():
+	# Aggregation functions
+	def owa(self, y, alpha):
+		y = np.asarray(y)
+		y.sort()
+		return (y*alpha).sum()
+	
+	def eu(self, y, alpha):
+		y = np.asarray(y)
+		return (y*alpha).sum()
+	
+	def choquet(self, y, alpha):
+		return 0
+
+
 	
 
 		
