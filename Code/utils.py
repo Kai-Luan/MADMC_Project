@@ -72,6 +72,14 @@ def miseAJour2(X, x):
 
 
 def init(m, n, p, v, w, W):
+	"""
+	m: le nombre de solution à générer
+	n: dimension de la solution
+	p: le nombre de critères
+	v: utilité des n objets
+	w: poids des n objets
+	W: la taille du sac
+	"""
 	res = []
 	def rapport(v1, v2, poids, q):
 		return (q*v1 +(1-q)*v2)/poids
@@ -87,13 +95,19 @@ def init(m, n, p, v, w, W):
 			if wTotal+w[arr[i]]<=W:
 				xStart[arr[i]]=1
 				wTotal=wTotal+w[arr[i]]
-				for j in range(p):
-					vStart[j]=vStart[j]+v[arr[i],j]
+				vStart+=v[arr[i]]
 		res.append([xStart, vStart])
 	return res
 
 # Fonction de voisinage
-def voisinage(x,n, v, w, W):
+def voisinage(x, n, v, w, W):
+	"""
+	x: solution à voisiner
+	n: dimension de la solution
+	v: utilité des n objets
+	w: poids des n objets
+	W: la taille du sac
+	"""
 	res = []
 	poids = sum(w*x[0])
 	for i in range(n):
