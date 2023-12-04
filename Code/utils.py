@@ -4,6 +4,7 @@ from indicators import *
 from gurobipy import GRB
 import gurobipy as gp
 from tqdm import tqdm
+from time import time
 
 
 # Initialisation generalisee
@@ -101,9 +102,8 @@ class Node():
 	def isEmpty(self):
 		return self.points == []
 	
-	def closest(self, y, P=None):
-		if P is None:
-			P = np.array([(x.pi+x.pn)/2 for x in self.points])
+	def closest(self, y):
+		P = np.array([(x.pi+x.pn)/2 for x in self.points])
 		D = np.linalg.norm(P-y, axis=1)
 		return self.points[np.argmin(D)]
 	
@@ -180,14 +180,14 @@ class Node():
 		self.points, P = N, self.points
 		while P: # Assign remaining solutions to leafs
 			z = P.pop()
-			tmp = self.closest(z)
+			tmp = self.closest(z[1])
 			tmp.points.append(z)
 			tmp.updateIdealNadir(z[1])
 	
 	def insert(self, y, NBMAX, nChild):
 		node = self
 		while not node.isLeaf(): 
-			node = node.closest(y)
+			node = node.closest(y[1])
 		node.points.append(y)
 		node.updateIdealNadir(np.array(y[1]))
 		if len(node.points) > NBMAX:
@@ -230,7 +230,7 @@ class NDTree():
 		if self.root is None:
 			self.root = Node(y)
 			return True
-		elif self.root.updateNode(self, y):
+		elif timeit(self.root.updateNode, (self, y), 'updateNode'):
 			self.root.insert(y, self.NBMAX, nChild=dim+1)
 			return True
 		return False
@@ -296,7 +296,11 @@ class Aggreg():
 	def choquet(self, y, alpha):
 		return 0
 
-
+def timeit(f, args):
+	start_time = time.time()
+	x = f(*args)
+	print("--- %s seconds ---" % (time.time() - start_time))
+	return x
 
 	
 
