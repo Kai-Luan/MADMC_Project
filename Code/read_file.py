@@ -1,4 +1,3 @@
-import matplotlib.pyplot as plt
 import numpy as np
 
 # w: weigh of object
@@ -38,4 +37,6 @@ def readPoints(filename, p):
 		i=i+1
 	f.close()
 	return YN
+
+
 

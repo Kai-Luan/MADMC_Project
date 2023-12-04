@@ -18,7 +18,7 @@ def init(m,params):
 	res = []
 	for _ in range(m):
 		# generalized q (instead of bi-distrib)
-		q = np.random.dirichlet(np.ones(6),size=1)[0]
+		q = np.random.dirichlet(np.ones(p),size=1)[0]
 		xStart=np.zeros(200,dtype=int) # n solutions
 		# on range dans l'ordre decroissant
 		arr = [rapport(v[j], w[j], q) for j in range(n)]
@@ -89,7 +89,6 @@ class Node():
 		self.pn = y[1]
 		self.points = [y]
 		self.pere = pere
-		self.count += 1
 		self.toremove = []
 
 	def isLeaf(self):
@@ -220,6 +219,7 @@ class NDTree():
 					r = get(x)
 					L.extend(r)
 				return L
+		if self.root is None: return []
 		return get(self.root)
 	
 	def getSquares(self, leafOnly = True):
@@ -303,6 +303,7 @@ class Aggreg():
 	
 	def choquet(self, y, alpha):
 		return 0
+
 
 
 	
