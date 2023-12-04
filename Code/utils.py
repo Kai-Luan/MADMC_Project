@@ -3,6 +3,7 @@ from read_file import *
 from indicators import *
 from gurobipy import GRB
 import gurobipy as gp
+from tqdm import tqdm
 
 
 # Initialisation generalisee
@@ -72,9 +73,12 @@ def PLS(m, params, NBMAX= 20, verbose=False):
 
 	iteration = 1
 	while population:
-		if verbose: print(f'{iteration = } | population size: {len(population)}')
+		if verbose: 
+			print(f'{iteration = } | population size: {len(population)}')
+			population = tqdm(population)
 		for p in population:
-			for candidat in voisinage(p, params):
+			voisins = voisinage(p, params)
+			for candidat in voisins:
 				if np.all(p[1] >= candidat[1]): continue
 				if Xe.update(candidat): Pa.update(candidat)
 		population = Pa.getPoints()
@@ -97,13 +101,11 @@ class Node():
 	def isEmpty(self):
 		return self.points == []
 	
-	def closest(self, y):
-		y = np.array(y[1])
-		P = [(x.pi+x.pn)/2 for x in self.points]
-		P = np.array(P)
+	def closest(self, y, P=None):
+		if P is None:
+			P = np.array([(x.pi+x.pn)/2 for x in self.points])
 		D = np.linalg.norm(P-y, axis=1)
-		index = np.argmin(D)
-		return self.points[index]
+		return self.points[np.argmin(D)]
 	
 	def remove(self, z):
 		self.toremove.append(z)
@@ -123,20 +125,11 @@ class Node():
 		self.points.append(x)
 
 	def updateIdealNadir(self, y):
-		b = 0
-		points = []
-		if self.isLeaf(): 
-			points = [p[1] for p in self.points]
-		else:
-			for x in self.points:
-				points.append(x.pi)
-				points.append(x.pn)
-		a = np.max(points, 0)
-		b = np.min(points, 0)
-		if (not np.array_equal(b,self.pn)) or (not np.array_equal(a,self.pi)):
-			self.pi = a
-			self.pn = b
-			if self.pere is not None: self.pere.updateIdealNadir(y)
+		node = self
+		while node is not None and (np.any(y < node.pn) or np.any(y > node.pi)):
+			node.pi = np.maximum(node.pi, y)
+			node.pn = np.minimum(node.pn, y)
+			node = node.pere			
 
 	def updateNode(self, tree, y):
 		"""
@@ -156,7 +149,6 @@ class Node():
 					if np.all(z[1] >= y[1]): return False
 					elif np.any(z[1] > y[1]): L.append(z)
 				self.points = L
-				self.updateIdealNadir(y)
 			else: 
 				L = []
 				for x in self.points:
@@ -190,16 +182,17 @@ class Node():
 			z = P.pop()
 			tmp = self.closest(z)
 			tmp.points.append(z)
-			tmp.updateIdealNadir(z)
+			tmp.updateIdealNadir(z[1])
 	
 	def insert(self, y, NBMAX, nChild):
-		if self.isLeaf():
-			self.points.append(y)
-			self.updateIdealNadir(y)
-			if len(self.points) > NBMAX:
-				self.split(nChild)
-		else:
-			self.closest(y).insert(y, NBMAX,nChild)
+		node = self
+		while not node.isLeaf(): 
+			node = node.closest(y)
+		node.points.append(y)
+		node.updateIdealNadir(np.array(y[1]))
+		if len(node.points) > NBMAX:
+			node.split(nChild)
+			
 
 class NDTree():
 	def __init__(self, NBMAX=20):
@@ -211,8 +204,7 @@ class NDTree():
 	# Squares: (depth, ideal point, nadir point) of each node
 	def getPoints(self):
 		def get(node):
-			if node.isLeaf():
-				return node.points
+			if node.isLeaf(): return node.points
 			else:
 				L = []
 				for x in node.points: 
@@ -234,12 +226,12 @@ class NDTree():
 		return get(self.root)
 
 	def update(self,y):
-		dim = len(y)
+		dim = len(y[1])
 		if self.root is None:
 			self.root = Node(y)
 			return True
 		elif self.root.updateNode(self, y):
-			self.root.insert(y, self.NBMAX, nChild=dim)
+			self.root.insert(y, self.NBMAX, nChild=dim+1)
 			return True
 		return False
 
