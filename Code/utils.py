@@ -6,6 +6,7 @@ import gurobipy as gp
 from tqdm import tqdm
 from time import time
 
+#file:///Users/christian/Desktop/MADMC_Project/projetMADMC.pdf
 
 # Initialisation generalisee
 # generalized version, it takes a vector allv and a vector q
@@ -230,7 +231,7 @@ class NDTree():
 		if self.root is None:
 			self.root = Node(y)
 			return True
-		elif timeit(self.root.updateNode, (self, y), 'updateNode'):
+		elif self.root.updateNode(self, y):
 			self.root.insert(y, self.NBMAX, nChild=dim+1)
 			return True
 		return False
@@ -282,19 +283,14 @@ class Model():
 		j = np.argmax(PMR)
 		return (X[i],X[j])
 
-class Aggreg():
-	# Aggregation functions
-	def owa(self, y, alpha):
-		y = np.asarray(y)
-		y.sort()
-		return (y*alpha).sum()
-	
-	def eu(self, y, alpha):
-		y = np.asarray(y)
-		return (y*alpha).sum()
-	
-	def choquet(self, y, alpha):
-		return 0
+def owa(y, alpha):
+	y = np.asarray(y)
+	y.sort()
+	return (y*alpha).sum()
+
+def eu(y, alpha):
+	y = np.asarray(y)
+	return (y*alpha).sum()
 
 def timeit(f, args):
 	start_time = time.time()
