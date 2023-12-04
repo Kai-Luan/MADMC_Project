@@ -5,6 +5,9 @@ from gurobipy import GRB
 import gurobipy as gp
 from tqdm import tqdm
 from time import time
+from functools import partial
+from multiprocessing import Process, Pool
+import multiprocessing.managers
 
 #file:///Users/christian/Desktop/MADMC_Project/projetMADMC.pdf
 
@@ -246,6 +249,15 @@ class NDTree():
 # x: minimax regret
 # y: argmax PMR(x,y)
 
+from functools import partial
+from multiprocessing import Process, Pool
+import multiprocessing.managers
+
+
+class MyManager(multiprocessing.managers.BaseManager):
+	pass
+MyManager.register('np_zeros', np.zeros, multiprocessing.managers.ArrayProxy)
+
 class Model():
 	def __init__(self, dim):
 		self.model = None
@@ -254,16 +266,21 @@ class Model():
 	# OWA aggregator model
 	def init_owa_model(self):
 		self.model = gp.Model('ModelEU')
+		self.model.Params.LogToConsole = 0
 		m = self.model
-		w = m.addVars(*range(self.dim))
-		self.w = np.array(w)
+		w = np.array([m.addVar() for _ in range(self.dim)])
+		self.w = w
 		for i in range(self.dim-1):
 			m.addConstr(w[i]-w[i+1]>=0, f'c{i+1}')
-		m.addConstr(sum(w) ==1)
+		m.addConstr(sum(w) == 1)
 
 	def update_owa(self, a,b):
-		a, b = np.asarray(a.sorted()), np.asarray(b.sorted())
+		a, b = np.sort(a), np.sort(b)
+		#self.model.Params.LogToConsole = 1
+		#self.model.display()
 		self.model.addConstr(sum((a-b)*self.w) >= 0)
+		self.model.update()
+		#self.model.display()
 
 	# Optimize with the OWA function
 	def optimize(self, a, b=None):
@@ -274,14 +291,32 @@ class Model():
 		self.model.setObjective(sum(self.w*(a-b)), GRB.MAXIMIZE)
 		self.model.update()
 		self.model.optimize()
-		return self.model.ObjVal()
-	
+		return self.model.ObjVal
+
 	def CSS(self, X):
-		MR = [self.optimize(x) for x in X]
-		i = np.argmin(MR)
-		PMR = [self.optimize(y, X[i]) for y in X]
-		j = np.argmax(PMR)
+		PMR = [[self.optimize(y,x) for y in X] for x in X]
+		i = np.argmin(np.max(PMR,1))
+		j = np.argmax(PMR[i])
 		return (X[i],X[j])
+
+	def compute_PMR_parallel(self, X):
+		manager = MyManager()
+		n = len(X)
+		manager.start()
+		PRM = manager.np_zeros((n,n))
+		pool = Pool(1)
+		
+		run_list = [(i,j) for i in range(n) for j in range(n)]
+		func = partial(self.local_func, X, PRM)
+		list_of_results = pool.map(func, run_list)
+		return PMR
+	
+	def local_func(X, PMR, args):
+		i,j = args
+		if i == j:
+			PMR[i][j] = 0
+		else:
+			PMR[i][j] = self.optimize(X[j],X[i])
 
 def owa(y, alpha):
 	y = np.asarray(y)
@@ -291,12 +326,6 @@ def owa(y, alpha):
 def eu(y, alpha):
 	y = np.asarray(y)
 	return (y*alpha).sum()
-
-def timeit(f, args):
-	start_time = time.time()
-	x = f(*args)
-	print("--- %s seconds ---" % (time.time() - start_time))
-	return x
 
 	
 
