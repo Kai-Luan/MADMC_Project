@@ -25,7 +25,7 @@ def init(m,params):
 	for _ in range(m):
 		# generalized q (instead of bi-distrib)
 		q = np.random.dirichlet(np.ones(p),size=1)[0]
-		xStart=np.zeros(200,dtype=int) # n solutions
+		xStart=np.zeros(n,dtype=int) # n solutions
 		# on range dans l'ordre decroissant
 		arr = [rapport(v[j], w[j], q) for j in range(n)]
 		arr = np.argsort(arr)[::-1]
@@ -241,6 +241,8 @@ class NDTree():
 
 	def reset(self):
 		self.root = None
+
+
 # MR: max regret: x in O
 # PMR: pairwise max regret, (x,y) in O
 # MMR: minimax regret: x
@@ -259,65 +261,93 @@ class MyManager(multiprocessing.managers.BaseManager):
 MyManager.register('np_zeros', np.zeros, multiprocessing.managers.ArrayProxy)
 
 class Model():
-	def __init__(self, dim):
-		self.model = None
-		self.dim = dim
+    def __init__(self, dim, mode='EU'):
+        self.dim = dim
+        self.f_normalize = 0
+        self.mode = mode
+        
+        # gurobi
+        self.model = gp.Model()
+        self.model.Params.LogToConsole = 0
+        
+        if mode == 'EU':
+            self.init_eu_model()
+        elif mode == 'OWA':
+            self.init_owa_model()
+        elif mode == 'Choquet':
+            self.init_choquet_model()
 
-	# OWA aggregator model
-	def init_owa_model(self):
-		self.model = gp.Model('ModelEU')
-		self.model.Params.LogToConsole = 0
-		m = self.model
-		w = np.array([m.addVar() for _ in range(self.dim)])
-		self.w = w
-		for i in range(self.dim-1):
-			m.addConstr(w[i]-w[i+1]>=0, f'c{i+1}')
-		m.addConstr(sum(w) == 1)
+    def CSS(self, X):
+        PMR = self.compute_PMR(X)
+        MR = np.max(PMR,1)
+        i = np.argmin(MR)
+        j = np.argmax(PMR[i])
+        if self.f_normalize == 0: self.f_normalize = MR.max()
+        return X[i],X[j], MR[i]/self.f_normalize
 
-	def update_owa(self, a,b):
-		a, b = np.sort(a), np.sort(b)
-		#self.model.Params.LogToConsole = 1
-		#self.model.display()
-		self.model.addConstr(sum((a-b)*self.w) >= 0)
-		self.model.update()
-		#self.model.display()
+    def compute_PMR(self, X):
+        return [[self.optimize(y,x) for y in X] for x in X]
+    
+    def optimize(self, a, b):
+        if self.mode == 'EU': return self.optimize_eu(a, b)
+        elif self.mode == 'OWA': return self.optimize_owa(a, b)
+        elif self.model == 'Choquet': return self.optimize_choquet(a, b) 
+        
+    def update(self, a, b):
+        if self.mode == 'EU': self.update_eu(a, b)
+        elif self.mode == 'OWA': self.update_owa(a, b)
+        elif self.model == 'Choquet': self.update_choquet(a, b) 
+        self.model.update()
+    
+    # ====== EU aggregator ======
+    def init_eu_model(self):
+        m = self.model
+        self.w = np.array([m.addVar() for _ in range(self.dim)])
+        m.addConstr(sum(self.w) == 1)
 
-	# Optimize with the OWA function
-	def optimize(self, a, b=None):
-		if b is None: b = np.zeros(self.dim)
-		a, b = np.asarray(a), np.asarray(b)
-		a.sort()
-		b.sort()
-		self.model.setObjective(sum(self.w*(a-b)), GRB.MAXIMIZE)
-		self.model.update()
-		self.model.optimize()
-		return self.model.ObjVal
+    def update_eu(self, a,b):
+        self.model.addConstr(sum((a-b)*self.w) >= 0)
+        
 
-	def CSS(self, X):
-		PMR = [[self.optimize(y,x) for y in X] for x in X]
-		i = np.argmin(np.max(PMR,1))
-		j = np.argmax(PMR[i])
-		return (X[i],X[j])
+    # Optimize with the OWA function
+    def optimize_eu(self, a, b=None):
+        if b is None: b = np.zeros(self.dim)
+        a, b = np.asarray(a), np.asarray(b)
+        self.model.setObjective(sum(self.w*(a-b)), GRB.MAXIMIZE)
+        self.model.update()
+        self.model.optimize()
+        return self.model.ObjVal
 
-	def compute_PMR_parallel(self, X):
-		manager = MyManager()
-		n = len(X)
-		manager.start()
-		PRM = manager.np_zeros((n,n))
-		pool = Pool(1)
-		
-		run_list = [(i,j) for i in range(n) for j in range(n)]
-		func = partial(self.local_func, X, PRM)
-		list_of_results = pool.map(func, run_list)
-		return PMR
-	
-	def local_func(X, PMR, args):
-		i,j = args
-		if i == j:
-			PMR[i][j] = 0
-		else:
-			PMR[i][j] = self.optimize(X[j],X[i])
+    # ====== OWA aggregator ======
+    def init_owa_model(self):
+        m = self.model
+        w = np.array([m.addVar() for _ in range(self.dim)])
+        self.w = w
+        for i in range(self.dim-1):
+            m.addConstr(w[i]-w[i+1]>=0, f'c{i+1}')
+        m.addConstr(sum(w) == 1)
 
+    def update_owa(self, a,b):
+        a, b = np.sort(a), np.sort(b)
+        self.update_eu(a,b)
+
+    # Optimize with the OWA function
+    def optimize_owa(self, a, b=None):
+        if b is None: b = np.zeros(self.dim)
+        a.sort()
+        b.sort()
+        return self.optimize_eu(a,b)
+    
+    # ====== Choquet aggregator ======
+    def init_choquet_model(self):
+        pass
+
+    def update_choquet(self, a,b):
+        pass
+
+    # Optimize with the OWA function
+    def optimize_choquet(self, a, b=None):
+        pass
 def owa(y, alpha):
 	y = np.asarray(y)
 	y.sort()
