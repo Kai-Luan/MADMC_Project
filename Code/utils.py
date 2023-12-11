@@ -312,6 +312,7 @@ class Model():
 	
 	def optimize(self, a, b):
 		a, b = a[1], b[1]
+		if np.array_equal(a, b): return 0
 		if self.mode == 'EU': return self.optimize_eu(a, b)
 		elif self.mode == 'OWA': return self.optimize_owa(a, b)
 		elif self.mode == 'Choquet': return self.optimize_choquet(a, b) 
