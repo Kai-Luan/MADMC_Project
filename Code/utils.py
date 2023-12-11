@@ -302,6 +302,9 @@ class Model():
 		return X[i],X[j], MR[i]/self.f_normalize
 
 	def compute_PMR(self, X, x=None):
+		if self.mode == 'Choquet':  # optimization to pre-process X for Choquet
+			x = (x[0], compute_xbar(x[1])) if x is not None else None 
+			X = [(y[0], compute_xbar(y[1])) for y in X]
 		if x is None:
 			return [[self.optimize(y,x) for y in X] for x in X]
 		else:
@@ -332,7 +335,6 @@ class Model():
 
 	def update_eu(self, a,b):
 		self.model.addConstr(sum((a-b)*self.w) >= 0)
-
 
 	# Optimize with the OWA function
 	def optimize_eu(self, a, b=None):
@@ -379,13 +381,10 @@ class Model():
 	# Optimize with the Choquet function
 	def optimize_choquet(self, a, b=None):
 		if b is None: b = np.zeros(self.dim)
-		a, b = compute_xbar(a), compute_xbar(b)
+		#a, b = compute_xbar(a), compute_xbar(b)
 		self.model.setObjective(sum(self.w*(a-b)), GRB.MAXIMIZE)
 		self.model.update()
 		self.model.optimize()
-		res = self.model.ObjVal
-		if res is None:
-			print('Error')
 		return self.model.ObjVal
 
 def eu(y, alpha):
@@ -465,7 +464,7 @@ def computeInitialSolution(params):
 	value = v[x!=0,:].sum(0)
 	return (x, value)
 
-class DecisonMaker():
+class DecisionMaker():
 	def __init__(self, dim, mode='EU', alpha = None):
 		self.params, self.func_aggreg = generate_params(dim, mode=mode)
 		if alpha is not None: self.params = alpha
@@ -474,12 +473,15 @@ class DecisonMaker():
 		a =  self.func_aggreg(a[1],self.params)
 		b = self.func_aggreg(b[1], self.params)
 		return a >= b
+	
+	def value(self, x):
+		return self.func_aggreg(x[1], self.params)
 
 		
 def RBLS(params, mode='EU', P=[], eps=1e-3, max_it=200, DM = None):
 	# Initialization
 	p = params[1]
-	if DM is None: DM = DecisonMaker(p, mode=mode)
+	if DM is None: DM = DecisionMaker(p, mode=mode)
 	model = Model(dim=p, mode=mode)
 	for a,b in P: model.update(a, b)
 	x_star = computeInitialSolution(params)
