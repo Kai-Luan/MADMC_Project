@@ -264,117 +264,129 @@ class MyManager(multiprocessing.managers.BaseManager):
 MyManager.register('np_zeros', np.zeros, multiprocessing.managers.ArrayProxy)
 
 class Model():
-    def __init__(self, dim, mode='EU'):
-        self.dim = dim
-        self.f_normalize = 0
-        self.mode = mode
+	def __init__(self, dim, mode='EU'):
+		self.dim = dim
+		self.f_normalize = 0
+		self.mode = mode
 
-        # gurobi
-        self.model = gp.Model()
-        self.model.Params.LogToConsole = 0
+		# gurobi
+		self.model = gp.Model()
+		self.model.Params.LogToConsole = 0
 
-        if mode == 'EU':
-            print('Init EU Model')
-            self.init_eu_model()
-        elif mode == 'OWA':
-            print('Init OWA Model')
-            self.init_owa_model()
-        elif mode == 'Choquet':
-            print('Init Choquet Model')
-            self.init_choquet_model()
-        else:
-            raise Exception('Error Init Model mode=(EU,OWA,Choquet)')
+		if mode == 'EU':
+			print('Init EU Model')
+			self.init_eu_model()
+		elif mode == 'OWA':
+			print('Init OWA Model')
+			self.init_owa_model()
+		elif mode == 'Choquet':
+			print('Init Choquet Model')
+			self.init_choquet_model()
+		else:
+			raise Exception('Error Init Model mode=(EU,OWA,Choquet)')
 
-    def CSS(self, X):
-        PMR = self.compute_PMR(X)
-        #print(PMR)
-        MR = np.max(PMR,1)
-        i = np.argmin(MR)
-        j = np.argmax(PMR[i])
-        if self.f_normalize == 0: self.f_normalize = MR.max()
-        return X[i],X[j], MR[i]/self.f_normalize
+	def CSS(self, X):
+		"""
+		return:
+		x: argmin MR
+		y: argmax PMR(x)
+		minimax regret: MMR
+		PMR(x): max PMR(x)
+		"""
+		PMR = self.compute_PMR(X)
+		#print(PMR)
+		MR = np.max(PMR,1)
+		i = np.argmin(MR)
+		j = np.argmax(PMR[i])
+		if self.f_normalize == 0: self.f_normalize = MR.max()
+		return X[i],X[j], MR[i]/self.f_normalize
 
-    def compute_PMR(self, X):
-        return [[self.optimize(y,x) for y in X] for x in X]
+	def compute_PMR(self, X, x=None):
+		if x is None:
+			return [[self.optimize(y,x) for y in X] for x in X]
+		else:
+			return [self.optimize(y,x) for y in X]
+	
+	def optimize(self, a, b):
+		a, b = a[1], b[1]
+		if self.mode == 'EU': return self.optimize_eu(a, b)
+		elif self.mode == 'OWA': return self.optimize_owa(a, b)
+		elif self.mode == 'Choquet': return self.optimize_choquet(a, b) 
+		else:
+			raise 'Error optimize model, mode=(EU,OWA,Choquet)'
+		
+	def update(self, a, b):
+		a, b = a[1], b[1]
+		if self.mode == 'EU': self.update_eu(a, b)
+		elif self.mode == 'OWA': self.update_owa(a, b)
+		elif self.mode == 'Choquet': self.update_choquet(a, b) 
+		else:
+			print('Error update model, mode=(EU,OWA,Choquet)')
+		self.model.update()
 
-    def optimize(self, a, b):
-        if self.mode == 'EU': return self.optimize_eu(a, b)
-        elif self.mode == 'OWA': return self.optimize_owa(a, b)
-        elif self.mode == 'Choquet': return self.optimize_choquet(a, b) 
-        else:
-            raise 'Error optimize model, mode=(EU,OWA,Choquet)'
-        
-    def update(self, a, b):
-        if self.mode == 'EU': self.update_eu(a, b)
-        elif self.mode == 'OWA': self.update_owa(a, b)
-        elif self.mode == 'Choquet': self.update_choquet(a, b) 
-        else:
-            raise 'Error update model, mode=(EU,OWA,Choquet)'
-        self.model.update()
+	# ====== EU aggregator ======
+	def init_eu_model(self):
+		m = self.model
+		self.w = np.array([m.addVar() for _ in range(self.dim)])
+		m.addConstr(sum(self.w) == 1) # may be useless
 
-    # ====== EU aggregator ======
-    def init_eu_model(self):
-        m = self.model
-        self.w = np.array([m.addVar() for _ in range(self.dim)])
-        m.addConstr(sum(self.w) == 1) # may be useless
-
-    def update_eu(self, a,b):
-        self.model.addConstr(sum((a-b)*self.w) >= 0)
+	def update_eu(self, a,b):
+		self.model.addConstr(sum((a-b)*self.w) >= 0)
 
 
-    # Optimize with the OWA function
-    def optimize_eu(self, a, b=None):
-        if b is None: b = np.zeros(self.dim)
-        a, b = np.asarray(a), np.asarray(b)
-        self.model.setObjective(sum(self.w*(a-b)), GRB.MAXIMIZE)
-        self.model.update()
-        self.model.optimize()
-        return self.model.ObjVal
+	# Optimize with the OWA function
+	def optimize_eu(self, a, b=None):
+		if b is None: b = np.zeros(self.dim)
+		a, b = np.asarray(a), np.asarray(b)
+		self.model.setObjective(sum(self.w*(a-b)), GRB.MAXIMIZE)
+		self.model.update()
+		self.model.optimize()
+		return self.model.ObjVal
 
-    # ====== OWA aggregator ======
-    def init_owa_model(self):
-        m = self.model
-        w = np.array([m.addVar() for _ in range(self.dim)])
-        self.w = w
-        for i in range(self.dim-1):
-            m.addConstr(w[i]-w[i+1]>=0, f'c{i+1}')
-        m.addConstr(sum(w) == 1)
+	# ====== OWA aggregator ======
+	def init_owa_model(self):
+		m = self.model
+		w = np.array([m.addVar() for _ in range(self.dim)])
+		self.w = w
+		for i in range(self.dim-1):
+			m.addConstr(w[i]-w[i+1]>=0, f'c{i+1}')
+		m.addConstr(sum(w) == 1)
 
-    def update_owa(self, a,b):
-        a, b = np.sort(a), np.sort(b)
-        self.update_eu(a,b)
+	def update_owa(self, a,b):
+		a, b = np.sort(a), np.sort(b)
+		self.update_eu(a,b)
 
-    # Optimize with the OWA function
-    def optimize_owa(self, a, b=None):
-        if b is None: b = np.zeros(self.dim)
-        a.sort()
-        b.sort()
-        return self.optimize_eu(a,b)
+	# Optimize with the OWA function
+	def optimize_owa(self, a, b=None):
+		if b is None: b = np.zeros(self.dim)
+		a.sort()
+		b.sort()
+		return self.optimize_eu(a,b)
 
-    # ====== Choquet aggregator ======
-    # we use formulation with mass function
-    def init_choquet_model(self):
-        m = self.model
-        self.w = np.array([m.addVar() for _ in range((1<<self.dim))])
-        for x in self.w: m.addConstr(x >= 0)
-        m.addConstr(sum(self.w) == 1)
-        m.addConstr(self.w[0] == 0)
+	# ====== Choquet aggregator ======
+	# we use formulation with mass function
+	def init_choquet_model(self):
+		m = self.model
+		self.w = np.array([m.addVar() for _ in range((1<<self.dim))])
+		for x in self.w: m.addConstr(x >= 0)
+		m.addConstr(sum(self.w) == 1)
+		m.addConstr(self.w[0] == 0)
 
-    def update_choquet(self, a, b):
-        a, b = compute_xbar(a), compute_xbar(b)
-        self.model.addConstr(sum((a-b)*self.w) >= 0)
+	def update_choquet(self, a, b):
+		a, b = compute_xbar(a), compute_xbar(b)
+		self.model.addConstr(sum((a-b)*self.w) >= 0)
 
-    # Optimize with the Choquet function
-    def optimize_choquet(self, a, b=None):
-        if b is None: b = np.zeros(self.dim)
-        a, b = compute_xbar(a), compute_xbar(b)
-        self.model.setObjective(sum(self.w*(a-b)), GRB.MAXIMIZE)
-        self.model.update()
-        self.model.optimize()
-        res = self.model.ObjVal
-        if res is None:
-            print('Error')
-        return self.model.ObjVal
+	# Optimize with the Choquet function
+	def optimize_choquet(self, a, b=None):
+		if b is None: b = np.zeros(self.dim)
+		a, b = compute_xbar(a), compute_xbar(b)
+		self.model.setObjective(sum(self.w*(a-b)), GRB.MAXIMIZE)
+		self.model.update()
+		self.model.optimize()
+		res = self.model.ObjVal
+		if res is None:
+			print('Error')
+		return self.model.ObjVal
 
 def eu(y, alpha):
 	"""
@@ -427,19 +439,19 @@ def compute_xbar(x):
 	return np.array(xbar)
 
 def generate_params(dim, mode='EU'):
-    if mode == 'EU':
-        alpha = np.random.dirichlet(np.ones(dim),size=1)[0]
-        func_aggreg = eu
-    elif mode == 'OWA':
-        alpha = np.random.dirichlet(np.ones(dim),size=1)[0]
-        alpha = np.sort(alpha)[::-1]
-        func_aggreg = owa
-    elif mode == 'Choquet':
-        alpha = np.random.random(1<<dim)
-        alpha[0] = 0
-        alpha/=alpha.sum()
-        func_aggreg = choquet
-    return alpha, func_aggreg
+	if mode == 'EU':
+		alpha = np.random.dirichlet(np.ones(dim),size=1)[0]
+		func_aggreg = eu
+	elif mode == 'OWA':
+		alpha = np.random.dirichlet(np.ones(dim),size=1)[0]
+		alpha = np.sort(alpha)[::-1]
+		func_aggreg = owa
+	elif mode == 'Choquet':
+		alpha = np.random.random(1<<dim)
+		alpha[0] = 0
+		alpha/=alpha.sum()
+		func_aggreg = choquet
+	return alpha, func_aggreg
 # ===
 # ===================== Regret-Based Local Search ================================
 def computeInitialSolution(params):
@@ -466,34 +478,29 @@ class DecisonMaker():
 		
 def RBLS(params, mode='EU', P=[], eps=1e-3, max_it=200, DM = None):
 	# Initialization
-	(n,p,v,w,W) = params
+	p = params[1]
 	if DM is None: DM = DecisonMaker(p, mode=mode)
 	model = Model(dim=p, mode=mode)
 	for a,b in P: model.update(a, b)
 	x_star = computeInitialSolution(params)
 	it = 0
 	improve = True
-
 	#  Local Search
 	while improve and (it < max_it):
+		print(f'{it = }')
 		# Generation of neighbors
-		X = voisinage(x_star)
+		X = voisinage(x_star, params)
 		# regret-based elicitation:
 		o1, o2, regret = model.CSS(X)
-
-		print(f'Start | {regret =: .2f}')
-		print(o1, o2)
 		while regret > eps:
 			if DM.ask(o1, o2): model.update(o1,o2)
 			else: model.update(o2,o1)
 			o1, o2, regret = model.CSS(X)
-		#PMR = model.CSS(X)
-		improve = MR > eps # MR à calculer
+		PMR = model.compute_PMR(X, x_star)
+		improve = max(PMR) > eps
 		if improve:
 			x_star = o1
+			print(f'solution: {max(PMR)/model.f_normalize}\n{x_star[1]}')
+			print()
 			it += 1
-			
-
-
-
-		
+	return x_star
