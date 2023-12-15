@@ -8,6 +8,7 @@ from time import time
 from functools import partial
 from multiprocessing import Process, Pool
 import multiprocessing.managers
+from functools import reduce
 
 #file:///Users/christian/Desktop/MADMC_Project/projetMADMC.pdf
 
@@ -305,6 +306,9 @@ class Model():
 		if self.mode == 'Choquet':  # optimization to pre-process X for Choquet
 			x = (x[0], compute_xbar(x[1])) if x is not None else None 
 			X = [(y[0], compute_xbar(y[1])) for y in X]
+		elif self.mode == 'OWA':  # optimization to pre-process X for Choquet
+			x = np.sort(x) if x is not None else None 
+			X = [(y[0], np.sort(y[1])) for y in X]
 		if x is None:
 			return [[self.optimize(y,x) for y in X] for x in X]
 		else:
@@ -355,15 +359,15 @@ class Model():
 			m.addConstr(w[i]-w[i+1]>=0, f'c{i+1}')
 		m.addConstr(sum(w) == 1)
 
-	def update_owa(self, a,b):
+	def update_owa(self, a, b):
 		a, b = np.sort(a), np.sort(b)
 		self.update_eu(a,b)
 
 	# Optimize with the OWA function
 	def optimize_owa(self, a, b=None):
 		if b is None: b = np.zeros(self.dim)
-		a.sort()
-		b.sort()
+		if not np.all(a[:-1] <= a[1:]): a.sort()
+		if not np.all(b[:-1] <= b[1:]): b.sort()
 		return self.optimize_eu(a,b)
 
 	# ====== Choquet aggregator ======
@@ -403,8 +407,7 @@ def owa(y, alpha):
 	y: solution in utility space
 	alpha: utility weight 
 	"""
-	y.sort()
-	return eu(y, alpha)
+	return eu(np.sort(y), alpha)
 
 def choquet(y, alpha):
 	"""
@@ -452,6 +455,69 @@ def generate_params(dim, mode='EU'):
 		alpha/=alpha.sum()
 		func_aggreg = choquet
 	return alpha, func_aggreg
+
+
+def get_opt_eu(params, alpha):
+	(n,p,v,w,W) = params
+	model = gp.Model()
+	model.Params.LogToConsole = 0
+
+	obj = np.array([model.addVar(vtype=GRB.BINARY) for _ in range(n)])
+	model.setObjective(sum(v@alpha*obj), GRB.MAXIMIZE)
+
+	model.addConstr(sum(obj*w) <= W)
+	model.update()
+	model.optimize()
+	#obj = [1<<i for i,o in enumerate(obj) if o.X > 0]
+	#o = reduce(lambda a,b: a|b ,obj)
+	obj = np.array([o.X for o in obj])
+	return (obj, model.ObjVal)
+
+def get_opt_owa(params, alpha):
+	(n,p,v,w,W) = params
+	model = gp.Model()
+	model.Params.LogToConsole = 0
+	poids = [p for p in alpha] + [0]
+	poids = [p - poids[i+1] for i,p in enumerate(poids[:-1])]
+
+	r = np.array([model.addVar(vtype=GRB.CONTINUOUS) for _ in range(p)])
+	b = np.array([[model.addVar() for _ in range(p)] for _ in range(p)])
+	obj = np.array([model.addVar(vtype=GRB.BINARY) for _ in range(n)])
+
+	for i in range(p):
+		yk = sum(v[:,i]*obj)
+		for k in range(p):
+			model.addConstr(r[k] - b[i,k] <= yk)
+	model.addConstr(sum(obj*w) <= W)
+	model.setObjective(sum(poids*(np.arange(1,p+1)*r-b.sum(0))), GRB.MAXIMIZE)
+
+	model.update()
+	model.optimize()
+	obj = np.array([o.X for o in obj])
+	return (obj, model.ObjVal)
+
+def get_opt_choquet(params, alpha):
+	(n,p,v,w,W) = params
+	model = gp.Model()
+	model.Params.LogToConsole = 0
+
+	y = np.array([model.addVar(vtype=GRB.CONTINUOUS) for _ in range(1<<p)])
+	obj = np.array([model.addVar(vtype=GRB.BINARY) for _ in range(n)])
+	print(len(y))
+
+	for A in range(1<<p):
+		for j in range(p):
+			if A & 1<<j == 0: continue
+			model.addConstr(y[A] <= sum(obj*v[:,j]))
+	model.addConstr(sum(obj*w) <= W)
+	model.setObjective(sum(alpha*y), GRB.MAXIMIZE)
+
+	model.update()
+	model.optimize()
+	obj = np.array([o.X for o in obj])
+	return (obj, model.ObjVal)
+
+
 # ===
 # ===================== Regret-Based Local Search ================================
 def computeInitialSolution(params):
@@ -468,18 +534,25 @@ def computeInitialSolution(params):
 class DecisionMaker():
 	def __init__(self, dim, mode='EU', alpha = None):
 		self.params, self.func_aggreg = generate_params(dim, mode=mode)
+		self.mode = mode
+		self.nb_questions = 0
 		if alpha is not None: self.params = alpha
 
 	def ask(self, a, b):
+		self.nb_questions += 1
 		a =  self.func_aggreg(a[1],self.params)
 		b = self.func_aggreg(b[1], self.params)
 		return a >= b
 	
 	def value(self, x):
 		return self.func_aggreg(x[1], self.params)
-
+	
+	def get_opt(self, params):
+		if self.mode == 'EU': return get_opt_eu(params, self.params)
+		if self.mode == 'OWA': return get_opt_owa(params, self.params)
+		if self.mode == 'EU': return get_opt_choquet(params, self.params)
 		
-def RBLS(params, mode='EU', P=[], eps=1e-3, max_it=200, DM = None):
+def RBLS(params, mode='EU', P=[], eps=1e-3, max_it=200, DM = None, NBMAX=20, verbose=False):
 	# Initialization
 	p = params[1]
 	if DM is None: DM = DecisionMaker(p, mode=mode)
@@ -490,9 +563,16 @@ def RBLS(params, mode='EU', P=[], eps=1e-3, max_it=200, DM = None):
 	improve = True
 	#  Local Search
 	while improve and (it < max_it):
-		print(f'{it = }')
 		# Generation of neighbors
-		X = voisinage(x_star, params)
+		Xe = NDTree(NBMAX)
+		Xe.update(x_star)
+		voisins = voisinage(x_star, params)
+		if verbose:
+			print(f'{it = } | voisins: {len(voisins)}')
+		for voisin in voisins: 
+			if np.all(x_star[1] >= voisin[1]): continue
+			Xe.update(voisin)
+		X = Xe.getPoints()
 		# regret-based elicitation:
 		o1, o2, regret = model.CSS(X)
 		while regret > eps:
@@ -500,10 +580,30 @@ def RBLS(params, mode='EU', P=[], eps=1e-3, max_it=200, DM = None):
 			else: model.update(o2,o1)
 			o1, o2, regret = model.CSS(X)
 		PMR = model.compute_PMR(X, x_star)
-		improve = max(PMR) > eps
+		improve = max(PMR) > eps and o1 is not x_star
 		if improve:
 			x_star = o1
-			print(f'solution: {max(PMR)/model.f_normalize}\n{x_star[1]}')
-			print()
+			if verbose:
+				print(f'solution: {max(PMR)/model.f_normalize}\n{x_star[1]}')
+				print()
 			it += 1
 	return x_star
+
+# ===================== Regret-Based Global Search ================================
+def RBGS(m, params, mode='EU', eps=1e-3, max_it=200, DM = None, NBMAX=20, verbose=False):
+	# Phase I: PLS
+	X = PLS(m,params, NBMAX)
+
+	# Phase II: Elicitation 
+	model = Model(dim=params[1], mode=mode)
+	o1, o2, regret = model.CSS(X)
+	minmax_regrets = [regret]
+	it = 1
+	while regret > eps and it < max_it:
+		if DM.ask(o1, o2): model.update(o1,o2)
+		else: model.update(o2,o1)
+		o1, o2, regret = model.CSS(X)
+		minmax_regrets.append(regret)
+		if verbose: print(f'{it = } | {regret =: .2f} | {o1[1]} {o2[1]}')
+		it += 1
+	return o1
