@@ -94,41 +94,52 @@ def PLS(m, params, NBMAX= 20, verbose=False):
 
 # ======================== ND-Tree ================================
 class Node():
+	# Un noeud du ND-Tree
+	"""
+ 	pi: point ideal
+        pn: point nadir
+	points: lui meme et fils
+        pere: noeud parent
+	toremove: les points a ne pas garder
+ 	"""
 	def __init__(self, y, pere=None):
 		self.pi = y[1]
 		self.pn = y[1]
 		self.points = [y]
 		self.pere = pere
 		self.toremove = []
-
+	# verifie si c'est un ensemble de solution
 	def isLeaf(self):
 		return not isinstance(self.points[0], Node)
-	
+	# verifie si l'ensemble des solutions est vide
 	def isEmpty(self):
 		return self.points == []
-	
+	# quand on ajoute une solution
 	def closest(self, y):
 		P = np.array([(x.pi+x.pn)/2 for x in self.points])
 		D = np.linalg.norm(P-y, axis=1)
 		return self.points[np.argmin(D)]
-	
+	# solution a retiree car dominee
 	def remove(self, z):
 		self.toremove.append(z)
-
+	# met a jour le noeud
 	def refresh(self):
 		if self.toremove:
 			self.points = [x for x in self.points if x not in self.toremove]
 			self.toremove = []
-
+	# z: point
+	# obj: un autre point
+	# on remplace z par obj
 	def replace(self, z, obj):
 		for i,p in enumerate(self.points):
 			if z is p: 
 				self.points[i] = obj
 				break
-	
+	# ajoute le point a l'ensemble
 	def append(self, x):
 		self.points.append(x)
 
+	# calcul des points nadir et ideaux 
 	def updateIdealNadir(self, y):
 		node = self
 		while node is not None and (np.any(y < node.pn) or np.any(y > node.pi)):
