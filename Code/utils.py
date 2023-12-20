@@ -140,19 +140,22 @@ class Node():
 		self.points.append(x)
 
 	# calcul des points nadir et ideaux 
+	# y: une solution
 	def updateIdealNadir(self, y):
 		node = self
 		while node is not None and (np.any(y < node.pn) or np.any(y > node.pi)):
+			# np.maximum prend le maximum terme a terme
 			node.pi = np.maximum(node.pi, y)
 			node.pn = np.minimum(node.pn, y)
 			node = node.pere            
-
+	# y: une solution (courante), y[0] : solution du sac, y[1] : les criteres
 	def updateNode(self, tree, y):
 		"""
 		return False if y is dominated, else True
 		"""
 		if np.all(self.pn >= y[1]): return False
 		elif np.all(y[1] >= self.pi): 
+			# si le point ideal est dominee, alors tout l'ensemble l'est aussi
 			# Remove self and sub_tree of n
 			if self.pere is not None: self.pere.remove(self)
 			return True
@@ -168,7 +171,7 @@ class Node():
 			else: 
 				L = []
 				for x in self.points:
-					if not x.updateNode(tree, y): # x domine y
+					if not x.updateNode(tree, y): # not x = True -> x domine y
 						return False
 					elif not x.isEmpty(): L.append(x)
 				self.points = L
@@ -179,7 +182,7 @@ class Node():
 					else: tree.root = node
 		self.refresh()
 		return True
-	
+	# On veut split un ensemble -> a traduire en langage naturel
 	def split(self, nChild=2):
 		points = np.array([p[1] for p in self.points])
 		D = [
