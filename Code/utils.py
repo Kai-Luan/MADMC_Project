@@ -202,7 +202,8 @@ class Node():
 			tmp = self.closest(z[1])
 			tmp.points.append(z)
 			tmp.updateIdealNadir(z[1])
-	
+
+	# insert la solution courante y 
 	def insert(self, y, NBMAX, nChild):
 		node = self
 		while not node.isLeaf(): 
