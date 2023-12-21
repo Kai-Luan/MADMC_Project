@@ -220,8 +220,8 @@ class Node():
 class NDTree():
 	"""
  	NBMAX: seuil d'un ensemble
-  	Structure de l'article par THIBAUT LUST : ND-Tree-based update: a Fast Algorithm for the
-Dynamic Non-Dominance Problem, https://arxiv.org/pdf/1603.04798.pdf
+  	Structure de données de l'article : 'ND-Tree-based update: a Fast Algorithm for the
+Dynamic Non-Dominance Problem', Thibaut Lust et Andrzej Jaszkiewicz, https://arxiv.org/pdf/1603.04798.pdf
  	"""
 	def __init__(self, NBMAX=20):
 		self.root = None
@@ -310,15 +310,17 @@ class Model():
 			self.init_choquet_model()
 		else:
 			raise Exception('Error Init Model mode=(EU,OWA,Choquet)')
-
+	#Current solution strategy
 	def CSS(self, X):
 		"""
+  		X: base des solutions possibles (criteres) 
 		return:
 		x: argmin MR
 		y: argmax PMR(x)
 		minimax regret: MMR
 		PMR(x): max PMR(x)
 		"""
+		# resolution d'un PL
 		PMR = self.compute_PMR(X)
 		#print(PMR)
 		MR = np.max(PMR,1)
@@ -328,11 +330,17 @@ class Model():
 		return X[i],X[j], MR[i]/self.f_normalize
 
 	def compute_PMR(self, X, x=None):
+		"""
+  		X: ensemble des solutions (sac, criteres)
+    		x: solution courante (x*)
+  		"""
 		if self.mode == 'Choquet':  # optimization to pre-process X for Choquet
 			x = (x[0], compute_xbar(x[1])) if x is not None else None 
 			X = [(y[0], compute_xbar(y[1])) for y in X]
-		elif self.mode == 'OWA':  # optimization to pre-process X for Choquet
+		elif self.mode == 'OWA':  # optimization to pre-process X for OWA
+			# X trie du pire au meilleur
 			x = np.sort(x) if x is not None else None 
+			# ex : y[1] = (y(1),...,y(n)) pour n criteres
 			X = [(y[0], np.sort(y[1])) for y in X]
 		if x is None:
 			return [[self.optimize(y,x) for y in X] for x in X]
@@ -357,20 +365,20 @@ class Model():
 			print('Error update model, mode=(EU,OWA,Choquet)')
 		self.model.update()
 
-	# ====== EU aggregator ======
+	# ====== EU aggregator or Weighted Sum ======
 	def init_eu_model(self):
 		m = self.model
 		self.w = np.array([m.addVar() for _ in range(self.dim)])
 		m.addConstr(sum(self.w) == 1) # may be useless
 
 	def update_eu(self, a,b):
-		self.model.addConstr(sum((a-b)*self.w) >= 0)
+		self.model.addConstr(sum((a-b)*self.w) >= 0) # <- w.x >= w.y
 
 	# Optimize with the OWA function
 	def optimize_eu(self, a, b=None):
 		if b is None: b = np.zeros(self.dim)
 		a, b = np.asarray(a), np.asarray(b)
-		self.model.setObjective(sum(self.w*(a-b)), GRB.MAXIMIZE)
+		self.model.setObjective(sum(self.w*(a-b)), GRB.MAXIMIZE) # <- PMRws(x,y;P) = maxw [y.w - x.w]
 		self.model.update()
 		self.model.optimize()
 		return self.model.ObjVal
@@ -393,7 +401,7 @@ class Model():
 		if b is None: b = np.zeros(self.dim)
 		if not np.all(a[:-1] <= a[1:]): a.sort()
 		if not np.all(b[:-1] <= b[1:]): b.sort()
-		return self.optimize_eu(a,b)
+		return self.optimize_eu(a,b) # <- resultat du PL
 
 	# ====== Choquet aggregator ======
 	# we use formulation with mass function
@@ -412,10 +420,10 @@ class Model():
 	def optimize_choquet(self, a, b=None):
 		if b is None: b = np.zeros(self.dim)
 		#a, b = compute_xbar(a), compute_xbar(b)
-		self.model.setObjective(sum(self.w*(a-b)), GRB.MAXIMIZE)
+		self.model.setObjective(sum(self.w*(a-b)), GRB.MAXIMIZE) # <- maxm m.ybar - m.xbar
 		self.model.update()
 		self.model.optimize()
-		return self.model.ObjVal
+		return self.model.ObjVal 
 
 def eu(y, alpha):
 	"""
@@ -499,6 +507,7 @@ def get_opt_eu(params, alpha):
 	return (obj, model.ObjVal)
 
 def get_opt_owa(params, alpha):
+	# Formulation de Ogryczak, 2003 pour des poids decroissant
 	(n,p,v,w,W) = params
 	model = gp.Model()
 	model.Params.LogToConsole = 0
@@ -512,7 +521,7 @@ def get_opt_owa(params, alpha):
 	for i in range(p):
 		yk = sum(v[:,i]*obj)
 		for k in range(p):
-			model.addConstr(r[k] - b[i,k] <= yk)
+			model.addConstr(r[k] - b[i,k] <= yk) 
 	model.addConstr(sum(obj*w) <= W)
 	model.setObjective(sum(poids*(np.arange(1,p+1)*r-b.sum(0))), GRB.MAXIMIZE)
 
@@ -522,6 +531,8 @@ def get_opt_owa(params, alpha):
 	return (obj, model.ObjVal)
 
 def get_opt_choquet(params, alpha):
+	# linearisation avec masses de mobius
+	# alpha: masses de mobius
 	(n,p,v,w,W) = params
 	model = gp.Model()
 	model.Params.LogToConsole = 0
