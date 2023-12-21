@@ -218,6 +218,11 @@ class Node():
 
 
 class NDTree():
+	"""
+ 	NBMAX: seuil d'un ensemble
+  	Structure de l'article par THIBAUT LUST : ND-Tree-based update: a Fast Algorithm for the
+Dynamic Non-Dominance Problem, https://arxiv.org/pdf/1603.04798.pdf
+ 	"""
 	def __init__(self, NBMAX=20):
 		self.root = None
 		self.NBMAX = NBMAX
@@ -236,7 +241,7 @@ class NDTree():
 				return L
 		if self.root is None: return []
 		return get(self.root)
-	
+	# cf cours pour leafOnly, on affiche que les ensembles des feuilles si true
 	def getSquares(self, leafOnly = True):
 		def get(node,count=0):
 			if node.isLeaf(): return [(count,node.pi, node.pn)]
@@ -247,12 +252,14 @@ class NDTree():
 					M.extend(yid)
 				return M
 		return get(self.root)
-
+	# ND-Tree Update
 	def update(self,y):
 		dim = len(y[1])
+		# Le NDtree est vide
 		if self.root is None:
 			self.root = Node(y)
 			return True
+		# On insere la solution
 		elif self.root.updateNode(self, y):
 			self.root.insert(y, self.NBMAX, nChild=dim+1)
 			return True
