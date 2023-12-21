@@ -182,11 +182,11 @@ class Node():
 					else: tree.root = node
 		self.refresh()
 		return True
-	# On veut split un ensemble :
-	# On veut n fils, on va prendre un point avec la moyenne euclidienne la plus grande 
-	# des autres et on itere jusqu'a ce que les n fils sont crees et on ajoute le 
-	# reste dans les ensembles les plus proches
+	# On veut split un ensemble 
 	def split(self, nChild=2):
+		"""On veut n fils, on va prendre un point avec la moyenne euclidienne la plus grande 
+		   des autres et on itere jusqu'a ce que les n fils sont crees et on ajoute le 
+		   reste dans les ensembles les plus proches"""
 		points = np.array([p[1] for p in self.points])
 		D = [
 			np.linalg.norm(points - p, axis=1).mean()
