@@ -321,11 +321,16 @@ class Model():
 		PMR(x): max PMR(x)
 		"""
 		# resolution d'un PL
+		# Recupere toutes les paires de PMR possibles
 		PMR = self.compute_PMR(X)
 		#print(PMR)
+		#On prend le max regret pour chaque x (pour un x donnée, on a |X|-1 PMR)
 		MR = np.max(PMR,1)
+		# On prend celui qui minimise le max regret (y)
 		i = np.argmin(MR)
+		# indice correspondant a l'ensemble dans les PMR (x)
 		j = np.argmax(PMR[i])
+		# Facteur de normalisation puis on renvoie x, y selon la formule de l'article et on normalise la valeur du minmax regret
 		if self.f_normalize == 0: self.f_normalize = MR.max()
 		return X[i],X[j], MR[i]/self.f_normalize
 
