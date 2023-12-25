@@ -592,7 +592,8 @@ class DecisionMaker():
 		if self.mode == 'EU': return get_opt_eu(params, self.params)
 		if self.mode == 'OWA': return get_opt_owa(params, self.params)
 		if self.mode == 'EU': return get_opt_choquet(params, self.params)
-		
+
+# ===================== METHODE 2 : Regret Based Local Search ================================
 def RBLS(params, mode='EU', P=[], eps=1e-3, max_it=200, DM = None, NBMAX=20, verbose=False):
 	"""
  	params: les parametres
@@ -619,8 +620,8 @@ def RBLS(params, mode='EU', P=[], eps=1e-3, max_it=200, DM = None, NBMAX=20, ver
 		voisins = voisinage(x_star, params)
 		if verbose:
 			print(f'{it = } | voisins: {len(voisins)}')
-		# En terme direct : On fait un PLS et au fur et a mesure on met a jour les contraintes du programme lineaire 
-		# Puis on fait des ajouts de contraintes
+		# En terme direct : On fait un PLS et au fur et a mesure du PLS on met a jour les contraintes du programme lineaire 
+		# au lieu de faire les 2 separement
 		for voisin in voisins: 
 			if np.all(x_star[1] >= voisin[1]): continue
 			Xe.update(voisin)
@@ -642,7 +643,7 @@ def RBLS(params, mode='EU', P=[], eps=1e-3, max_it=200, DM = None, NBMAX=20, ver
 			it += 1
 	return x_star
 
-# ===================== Regret-Based Global Search ================================
+# ===================== METHODE 1 : Regret-Based Global Search ================================
 def RBGS(m, params, mode='EU', eps=1e-3, max_it=200, DM = None, NBMAX=20, verbose=False):
 	# Phase I: PLS
 	X = PLS(m,params, NBMAX)
