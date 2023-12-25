@@ -594,6 +594,15 @@ class DecisionMaker():
 		if self.mode == 'EU': return get_opt_choquet(params, self.params)
 		
 def RBLS(params, mode='EU', P=[], eps=1e-3, max_it=200, DM = None, NBMAX=20, verbose=False):
+	"""
+ 	params: les parametres
+  	mode: le critere (EU, OWA, Choquet)
+   	max_it: le nombre maximum d'iterations du PLS et Elicitation
+    	eps: le seuil
+     	DM: le decideur
+      	NBMAX: seuil dans le NDTree
+       	verbose: affichage (False evite d'afficher trop d'element dans le terminal)
+ 	"""
 	# Initialization
 	p = params[1]
 	if DM is None: DM = DecisionMaker(p, mode=mode)
@@ -610,12 +619,15 @@ def RBLS(params, mode='EU', P=[], eps=1e-3, max_it=200, DM = None, NBMAX=20, ver
 		voisins = voisinage(x_star, params)
 		if verbose:
 			print(f'{it = } | voisins: {len(voisins)}')
+		# En terme direct : On fait un PLS et au fur et a mesure on met a jour les contraintes du programme lineaire 
+		# Puis on fait des ajouts de contraintes
 		for voisin in voisins: 
 			if np.all(x_star[1] >= voisin[1]): continue
 			Xe.update(voisin)
 		X = Xe.getPoints()
 		# regret-based elicitation, on va avec les solutions initiales calculer le minmax PMR :
 		o1, o2, regret = model.CSS(X)
+		# Les preferences de minmax PMR permettent de faire une coupe pour connaitre la solution qui interesse le decideur
 		while regret > eps:
 			if DM.ask(o1, o2): model.update(o1,o2)
 			else: model.update(o2,o1)
