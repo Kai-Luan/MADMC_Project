@@ -188,17 +188,19 @@ class Node():
 		   des autres et on itere jusqu'a ce que les n fils sont crees et on ajoute le 
 		   reste dans les ensembles les plus proches"""
 		points = np.array([p[1] for p in self.points])
-		D = [
-			np.linalg.norm(points - p, axis=1).mean()
-			for p in points
-		]
-		I = np.argsort(D)[-nChild:]
-		I.sort()
-		N = []
+		D = np.array([
+			np.linalg.norm(points - p, axis=1)
+			for p in points])
+		
 		# Create New Nodes
-		for i in I[::-1]:
+		N = []
+		for _ in range(nChild):
+			i = np.argmin(D.mean(1))
 			z = self.points.pop(i)
 			N.append(Node(z, pere=self))
+			D = np.delete(D, i, 0)
+			D = np.delete(D, i, 1)
+
 		self.points, P = N, self.points
 		while P: # Assign remaining solutions to leafs
 			z = P.pop()
@@ -279,15 +281,6 @@ Dynamic Non-Dominance Problem', Thibaut Lust et Andrzej Jaszkiewicz, https://arx
 # CSS:
 # x: minimax regret
 # y: argmax PMR(x,y)
-
-from functools import partial
-from multiprocessing import Process, Pool
-import multiprocessing.managers
-
-
-class MyManager(multiprocessing.managers.BaseManager):
-	pass
-MyManager.register('np_zeros', np.zeros, multiprocessing.managers.ArrayProxy)
 
 class Model():
 	def __init__(self, dim, mode='EU'):
