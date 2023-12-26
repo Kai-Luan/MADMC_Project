@@ -626,9 +626,10 @@ def RBLS(params, mode='EU', P=[], eps=1e-3, max_it=200, DM = None, NBMAX=20, ver
 			if np.all(x_star[1] >= voisin[1]): continue
 			Xe.update(voisin)
 		X = Xe.getPoints()
-		# regret-based elicitation, on va avec les solutions initiales calculer le minmax PMR :
+		# MMR inital
 		o1, o2, regret = model.CSS(X)
-		# Les preferences de minmax PMR permettent de faire une coupe pour connaitre la solution qui interesse le decideur
+		# Les preferences de minmax PMR permettent d'ajouter une contrainte pour connaitre la solution qui interesse le decideur 
+		# puis regret-based elicitation, calculer le MMR (rinse and repeat)
 		while regret > eps:
 			if DM.ask(o1, o2): model.update(o1,o2)
 			else: model.update(o2,o1)
