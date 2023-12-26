@@ -594,6 +594,8 @@ class DecisionMaker():
 		if self.mode == 'EU': return get_opt_choquet(params, self.params)
 
 # ===================== METHODE 2 : Regret Based Local Search ================================
+# En terme direct : On fait un PLS et au fur et a mesure du PLS on met a jour les contraintes du programme lineaire 
+# au lieu de faire les 2 separement
 def RBLS(params, mode='EU', P=[], eps=1e-3, max_it=200, DM = None, NBMAX=20, verbose=False):
 	"""
  	params: les parametres
@@ -620,8 +622,6 @@ def RBLS(params, mode='EU', P=[], eps=1e-3, max_it=200, DM = None, NBMAX=20, ver
 		voisins = voisinage(x_star, params)
 		if verbose:
 			print(f'{it = } | voisins: {len(voisins)}')
-		# En terme direct : On fait un PLS et au fur et a mesure du PLS on met a jour les contraintes du programme lineaire 
-		# au lieu de faire les 2 separement
 		for voisin in voisins: 
 			if np.all(x_star[1] >= voisin[1]): continue
 			Xe.update(voisin)
