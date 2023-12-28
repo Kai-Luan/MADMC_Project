@@ -1,14 +1,7 @@
 import numpy as np
 from read_file import *
-from indicators import *
 from gurobipy import GRB
 import gurobipy as gp
-from tqdm import tqdm
-from time import time
-from functools import partial
-from multiprocessing import Process, Pool
-import multiprocessing.managers
-from functools import reduce
 
 #file:///Users/christian/Desktop/MADMC_Project/projetMADMC.pdf
 
@@ -182,6 +175,7 @@ class Node():
 					else: tree.root = node
 		self.refresh()
 		return True
+	
 	# On veut split un ensemble 
 	def split(self, nChild=2):
 		"""On veut n fils, on va prendre un point avec la moyenne euclidienne la plus grande 

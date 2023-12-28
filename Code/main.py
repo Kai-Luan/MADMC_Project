@@ -2,148 +2,116 @@ import numpy as np
 import matplotlib.pyplot as plt
 from utils import *
 from read_file import *
-from indicators import *
+from time import time
+import pandas as pd
 
+def gap(opt, sol):
+    return (opt - sol)*100 / opt
 
-numInstance=0
-n=200
-p=6
+def value(x, v):
+    print(x.shape)
+    return v[x==1, :].sum(0)
 
-w=np.zeros(n,dtype=int) # cout des objets
-v=np.zeros((n,p),dtype=int) # utilité v1, v2
-filename = "../data/"+"2KP"+str(n)+"-TA-"+str(numInstance)+".dat"
+def step(params, mode='EU', m = 20, verbose=False):
+    DM = DecisionMaker(p, mode)
+    DM_opt = DM.get_opt(params)
+    print('Optimal: ', value(DM_opt[0], params[2]))
 
-# W: budget
-W=readFile(filename,w,v)
+    # Procedure 1
+    DM.nb_questions
+    print('Procedure 1')
+    tps = time()
+    opt = RBGS(m, params, mode=mode, DM=DM, verbose=verbose)
+    tps = time() - tps
+    n = DM.nb_questions
+    g = gap(DM_opt[1], DM.value(opt))
+    res1 = (1, n, g, tps)
+    
+    DM.nb_questions = 0
 
-#Lecture des point non-dominées (pas present dans le projet)
+    #Procedure 2
+    print('Procedure 2')
+    tps = time()
+    opt = RBLS(params, mode=mode, DM=DM, verbose=verbose)
+    tps = time() - tps
+    n = DM.nb_questions
+    g = gap(DM_opt[1], DM.value(opt))
+    res2 = (2, n, g, tps)
+    DM.nb_questions = 0
+    return res1, res2
 
-# filename = "Data/"+str(n)+"_items/2KP"+str(n)+"-TA-"+str(numInstance)+".eff"
-# YN=readPoints(filename,p)
+def experience1(params, output_file, nb_run=20):
+    print('Experience 1')
+    m = 20
+    verbose = True
+    NBMAX = 20
+    print('Genereting non-dominated solutions ...')
+    YND = PLS(m, params, NBMAX,verbose= False)
+    points = list(map(lambda x: x[1], YND))
+    points = np.array(points)
+    print(f'nombre de points non-dominés trouvés: {len(points)}')
 
-# plt.grid()
-# plt.scatter(YN[:,0],YN[:,1])
+    eps = 1e-4
+    L = []
+    mode = 'EU'
+    it_max = 50
+    for epoch in range(nb_run):
+        print(f'{epoch = } / {nb_run-1}')
+        DM = DecisionMaker(p, mode)
+        model = Model(dim=p, mode=mode)
+        o1, o2, regret = model.CSS(YND)
+        minmax_regrets = [regret]
+        it = 0
+        while regret > eps and it < it_max:
+            if DM.ask(o1, o2): model.update(o1,o2)
+            else: model.update(o2,o1)
+            o1, o2, regret = model.CSS(YND)
+            minmax_regrets.append(regret)
+        L.append(minmax_regrets)
 
-YND=[]  #YND est la liste des solutions non-dominées (approximation)
+    mean_regrets = np.zeros((nb_run,it_max))
+    for i,regrets in enumerate(L):
+        mean_regrets[i,0] = len(regrets)
+        mean_regrets[i,1:len(regrets)+1] = regrets
+    P = pd.DataFrame(mean_regrets)
+    P.to_csv(output_file, mode='a')
+    print('Finish')
 
-#Génération de m solutions aléatoires : 
-m=100
+def experience2(params, output_file, nb_run = 20):
+    print('===== Experience 2 ========')
+    P = []
+    mode = 'EU'
+    m = 20
+    for it in range(nb_run):
+        print(f'======= {it = } / {nb_run-1} ========')
+        res1, res2 = step(params, mode, m, verbose=True)
+        P.append(res1)
+        P.append(res2)
+    P = np.array(P) # (nb queries, gap, time)
+    labels = ['Methode', 'Number of queries', 'Gap', 'Times']
+    P = pd.DataFrame(P, columns=labels)
+    P.to_csv(output_file, mode='a')
+    print('Finished')
+ 
+if __name__ == '__main__':
+    ## Loading data
+    n = 200
+    p = 6
+    filename = f"./data/2KP200-TA-0.dat"
 
+    w=np.zeros(n,dtype=int) # poids des objets
+    v=np.zeros((n,p),dtype=int) # utilités des objets
+    W = readFile(filename,w,v)
 
+    # ====== On prend un sous-ensemble du problème ====
+    # nombre d'objets
+    n = 50
+    # nombre de critères
+    p = 3
+    w = w[:n] # poids des objets
+    v = v[:n,:p] # valeurs des objets sur les p critèress
+    W = w.sum()//2 # capacité du sac à dos
+    params = (n,p,v,w,W)
 
-YND=[] 
-A=[]
-
-
-
-def PLS(m):
-	population = init(m)
-	for sol in population:
-		plt.scatter(sol[1][0],sol[1][1],color='red')
-	Xe = population
-	initialisation = Xe.copy()
-	Pa = []
-	while population:
-		voisins = []
-		for p in population:
-			for candidat in voisinage(p):
-				b = False
-				for v1, v2 in zip(p[1], candidat[1]):
-					if v1 <= v2:
-						pass
-					else:
-						b = True
-						break
-				if b and miseAJour(Xe, candidat):
-					miseAJour(Pa, candidat)
-		population = Pa
-		Pa = []
-	return Xe
-
-def PLS2(m):
-	population = init(m)
-	population = sorted(population, key= lambda c: (c[1][0], c[1][1]))
-	# print("before: ",[y[1] for y in population])
-	Pa = []
-	Xe = population
-	while population:
-		for p in population:
-			for candidat in voisinage(p):
-				b = False
-				for v1, v2 in zip(p[1], candidat[1]):
-					if v1 <= v2:
-						pass
-					else:
-						b = True
-						break
-				if b and miseAJour2(Xe, candidat):
-					miseAJour2(Pa, candidat)
-		population = Pa
-		Pa = []
-	return Xe
-
-# tabt = []
-# propt = []
-# dmt=[]
-
-# startt = time.time()
-# YND = PLS(m)
-# endt = time.time()
-
-# # Append in tab the elements
-# tabt.append(endt-startt)
-# propt.append(proportion(YN,YND))
-# dmt.append(DM(YN,YND,p))
-
-# startt = time.time()
-# YND2 = PLS2(m)
-# endt = time.time()
-
-# # Append in tab the elements
-# tabt.append(endt-startt)
-# propt.append(proportion(YN,YND2))
-# dmt.append(DM(YN,YND2,p))
-
-# for sol in YND:
-# 	plt.scatter(sol[1][0],sol[1][1],color='green')
-
-
-# plt.show()
-
-#Calcule de la proportion
-
-#print("Proportion = ",proportion(YN,YND))
-
-#Calcule de la distance DM
-
-#print("DM =",DM(YN,YND,p))
-
-
-# for i in range(len(tabt)):
-# 	print("Pour PLS",i+1)
-# 	print(f'temps : {tabt[i]}, PYn : {propt[i]}, Dm : {dmt[i]}')
-
-# with open('plsResults.csv', 'w', newline='') as csvfile:
-# 	writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
-# 	writer.writerow(['','Temps',"PYn","Dm"])
-# 	for i in range(len(tabt)):
-# 		writer.writerow([f'PLS{i+1}',tabt[i],propt[i],dmt[i]])
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    experience1(params=params, output_file=f'data/exp1_{p}KP{n}.csv', nb_run=20)
+    experience2(params=params, output_file=f'data/exp2_{p}KP{n}.csv', nb_run=20)
