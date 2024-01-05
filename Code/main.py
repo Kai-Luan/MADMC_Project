@@ -40,7 +40,7 @@ def step(params, mode='EU', m = 20, verbose=False):
     DM.nb_questions = 0
     return res1, res2
 
-def experience1(params, output_file, nb_run=20):
+def experience1(params, output_file, mode='EU', nb_run=20):
     print('Experience 1')
     m = 20
     verbose = True
@@ -53,7 +53,6 @@ def experience1(params, output_file, nb_run=20):
 
     eps = 1e-4
     L = []
-    mode = 'EU'
     it_max = 50
     for epoch in range(nb_run):
         print(f'{epoch = } / {nb_run-1}')
@@ -77,10 +76,10 @@ def experience1(params, output_file, nb_run=20):
     P.to_csv(output_file, mode='a')
     print('Finish')
 
-def experience2(params, output_file, nb_run = 20):
+def experience2(params, output_file, mode = 'EU', nb_run = 20):
     print('===== Experience 2 ========')
     P = []
-    mode = 'EU'
+
     m = 20
     for it in range(nb_run):
         print(f'======= {it = } / {nb_run-1} ========')
@@ -98,6 +97,7 @@ if __name__ == '__main__':
     n = 200
     p = 6
     filename = f"./data/2KP200-TA-0.dat"
+    mode = 'Choquet'
 
     w=np.zeros(n,dtype=int) # poids des objets
     v=np.zeros((n,p),dtype=int) # utilités des objets
@@ -113,5 +113,5 @@ if __name__ == '__main__':
     W = w.sum()//2 # capacité du sac à dos
     params = (n,p,v,w,W)
 
-    experience1(params=params, output_file=f'data/exp1_{p}KP{n}.csv', nb_run=20)
-    experience2(params=params, output_file=f'data/exp2_{p}KP{n}.csv', nb_run=20)
+    experience1(params=params, output_file=f'data/{mode}/exp1_{p}KP{n}.csv', mode=mode, nb_run=20)
+    experience2(params=params, output_file=f'data/{mode}/exp2_{p}KP{n}.csv', mode=mode, nb_run=20)

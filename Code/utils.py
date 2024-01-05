@@ -282,6 +282,9 @@ class Model():
 		self.f_normalize = 0
 		self.mode = mode
 
+		# Memory choquet
+		self.memory = dict()
+
 		# gurobi
 		self.model = gp.Model()
 		self.model.Params.LogToConsole = 0
@@ -327,11 +330,18 @@ class Model():
     		x: solution courante (x*)
   		"""
 		if self.mode == 'Choquet':  # optimization to pre-process X for Choquet
-			x = (x[0], compute_xbar(x[1])) if x is not None else None 
-			X = [(y[0], compute_xbar(y[1])) for y in X]
+			def f(sol):
+				k = ''.join(sol[0].astype(int).astype(str))
+				if k not in self.memory: self.memory[k] = compute_xbar(sol[1])
+				return (sol[0], self.memory[k])
+			
+			x = f(x) if x is not None else None 
+			X = [f(y) for y in X]
+
 		elif self.mode == 'OWA':  # optimization to pre-process X for OWA
 			# X trie du pire au meilleur
-			x = np.sort(x) if x is not None else None 
+			#print('Sort: ', x)
+			x = (x[0],np.sort(x[1])) if x is not None else None 
 			# ex : y[1] = (y(1),...,y(n)) pour n criteres
 			X = [(y[0], np.sort(y[1])) for y in X]
 		if x is None:
@@ -578,7 +588,7 @@ class DecisionMaker():
 	def get_opt(self, params):
 		if self.mode == 'EU': return get_opt_eu(params, self.params)
 		if self.mode == 'OWA': return get_opt_owa(params, self.params)
-		if self.mode == 'EU': return get_opt_choquet(params, self.params)
+		if self.mode == 'Choquet': return get_opt_choquet(params, self.params)
 
 # ===================== METHODE 2 : Regret Based Local Search ================================
 # En terme direct : On fait un PLS et au fur et a mesure du PLS on met a jour les contraintes du programme lineaire 
