@@ -41,12 +41,26 @@ def step(params, mode='EU', m = 20, verbose=False):
     return res1, res2
 
 def experience1(params, output_file, mode='EU', nb_run=20):
-    print('Experience 1')
-    m = 20
+    """
+    Lance une experience sur la première méthode de résolution et le sauvegarde dans un fichier csv
+    avec le nombre de questions posée et variation du regret minimax selon le nombre de questions posées
+    paramèters:
+    - params: problème du sac à dos (n,p,v,w,W)
+            - n: nombre d'objets
+            - p: nombre de critères
+            - v: valeurs des objets sur p critères
+            - w: poids des objets
+            - W: capacité du sac à dos
+    - output_file: nom du fichier csv avec les données de l'expérimentation
+    - mode: le nom de la fonction d'agrégation
+    - nb_run: le nombre de simulation
+    """
+    print('======= Experience 1 ========')
+    nb_initial = 20
     verbose = True
     NBMAX = 20
-    print('Genereting non-dominated solutions ...')
-    YND = PLS(m, params, NBMAX,verbose= False)
+    print('Generation des solutions non-dominatées  ...')
+    YND = PLS(nb_initial, params, NBMAX,verbose= False)
     points = list(map(lambda x: x[1], YND))
     points = np.array(points)
     print(f'nombre de points non-dominés trouvés: {len(points)}')
@@ -74,16 +88,32 @@ def experience1(params, output_file, mode='EU', nb_run=20):
         mean_regrets[i,1:len(regrets)+1] = regrets
     P = pd.DataFrame(mean_regrets)
     P.to_csv(output_file, mode='a')
-    print('Finish')
+    print('Finished')
 
 def experience2(params, output_file, mode = 'EU', nb_run = 20):
+    """
+    Lance une experience et le sauvegarde dans un fichier csv
+    On compare la 1e et la 2e méthode selon:
+        - le temps de calcul
+        - l'erreur par rapport à la solution optimale du décideur
+        - le nombre de questions posées
+    paramèters:
+    - params: problème du sac à dos (n,p,v,w,W)
+            - n: nombre d'objets
+            - p: nombre de critères
+            - v: valeurs des objets sur p critères
+            - w: poids des objets
+            - W: capacité du sac à dos
+    - output_file: nom du fichier csv avec les données de l'expérimentation
+    - mode: le nom de la fonction d'agrégation
+    - nb_run: le nombre de simulation
+    """
     print('===== Experience 2 ========')
     P = []
-
-    m = 20
+    nb_initial = 20
     for it in range(nb_run):
         print(f'======= {it = } / {nb_run-1} ========')
-        res1, res2 = step(params, mode, m, verbose=True)
+        res1, res2 = step(params, mode, nb_initial, verbose=True)
         P.append(res1)
         P.append(res2)
     P = np.array(P) # (nb queries, gap, time)
@@ -103,7 +133,7 @@ if __name__ == '__main__':
     W = readFile(filename,w,v)
     #################################################
     # ====== On prend un sous-ensemble du problème ====
-    mode = 'EU'
+    mode = 'OWA'
     # nombre d'objets
     n = 20
     # nombre de critères
