@@ -105,7 +105,7 @@ if __name__ == '__main__':
 
     # ====== On prend un sous-ensemble du problème ====
     # nombre d'objets
-    n = 50
+    n = 20
     # nombre de critères
     p = 3
     w = w[:n] # poids des objets
