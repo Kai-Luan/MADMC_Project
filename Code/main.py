@@ -93,19 +93,19 @@ def experience2(params, output_file, mode = 'EU', nb_run = 20):
     print('Finished')
  
 if __name__ == '__main__':
+    ############ NE PAS MODEIFIER ####################
     ## Loading data
     n = 200
     p = 6
     filename = f"./data/2KP200-TA-0.dat"
-    mode = 'Choquet'
-
     w=np.zeros(n,dtype=int) # poids des objets
     v=np.zeros((n,p),dtype=int) # utilités des objets
     W = readFile(filename,w,v)
-
+    #################################################
     # ====== On prend un sous-ensemble du problème ====
+    mode = 'EU'
     # nombre d'objets
-    n = 50
+    n = 20
     # nombre de critères
     p = 3
     w = w[:n] # poids des objets
