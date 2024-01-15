@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from utils import *
+from model import *
 from read_file import *
 from time import time
 import pandas as pd
@@ -87,7 +88,7 @@ def experience1(params, output_file, mode='EU', nb_run=20):
         mean_regrets[i,0] = len(regrets)
         mean_regrets[i,1:len(regrets)+1] = regrets
     P = pd.DataFrame(mean_regrets)
-    P.to_csv(output_file, mode='a')
+    P.to_csv(output_file, mode='w')
     print('Finished')
 
 def experience2(params, output_file, mode = 'EU', nb_run = 20):
@@ -119,7 +120,7 @@ def experience2(params, output_file, mode = 'EU', nb_run = 20):
     P = np.array(P) # (nb queries, gap, time)
     labels = ['Methode', 'Number of queries', 'Gap', 'Times']
     P = pd.DataFrame(P, columns=labels)
-    P.to_csv(output_file, mode='a')
+    P.to_csv(output_file, mode='w')
     print('Finished')
  
 if __name__ == '__main__':
@@ -133,9 +134,9 @@ if __name__ == '__main__':
     W = readFile(filename,w,v)
     #################################################
     # ====== On prend un sous-ensemble du problème ====
-    mode = 'OWA'
+    mode = 'EU'
     # nombre d'objets
-    n = 20
+    n = 60
     # nombre de critères
     p = 3
     w = w[:n] # poids des objets
@@ -143,5 +144,5 @@ if __name__ == '__main__':
     W = w.sum()//2 # capacité du sac à dos
     params = (n,p,v,w,W)
 
-    experience1(params=params, output_file=f'data/{mode}/exp1_{p}KP{n}.csv', mode=mode, nb_run=20)
-    experience2(params=params, output_file=f'data/{mode}/exp2_{p}KP{n}.csv', mode=mode, nb_run=20)
+    experience1(params=params, output_file=f'data/{mode}/exp1_{p}KP{n}.log', mode=mode, nb_run=20)
+    #experience2(params=params, output_file=f'data/{mode}/exp2_{p}KP{n}.log', mode=mode, nb_run=20)
